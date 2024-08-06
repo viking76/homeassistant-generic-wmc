@@ -1,5 +1,5 @@
 """
-Adds support for generic hygrostat units.
+Adds support for generic dew point hygrostat units.
 
 For more details about this platform, please refer to the documentation at
 https://home-assistant.io/components/binary_sensor.generic_hygrostat/
@@ -24,7 +24,7 @@ DEPENDENCIES = ["sensor"]
 
 SAMPLE_DURATION = timedelta(minutes=15)
 
-DEFAULT_NAME = "Generic Hygrostat"
+DEFAULT_NAME = "Generic Dew Point Hygrostat"
 
 ATTR_NUMBER_OF_SAMPLES = "number_of_samples"
 ATTR_LOWEST_SAMPLE = "lowest_sample"
@@ -32,15 +32,17 @@ ATTR_TARGET = "target"
 ATTR_MIN_ON_TIMER = "min_on_timer"
 ATTR_MAX_ON_TIMER = "max_on_timer"
 ATTR_MIN_HUMIDITY = "min_humidity"
+ATTR_DEW_POINT = "dew_point"
 
-CONF_SENSOR = "sensor"
-CONF_ATTRIBUTE = "attribute"
+CONF_SENSOR_INDOOR_TEMP = "sensor_indoor_temp"
+CONF_SENSOR_INDOOR_HUMIDITY = "sensor_indoor_humidity"
+CONF_SENSOR_OUTDOOR_TEMP = "sensor_outdoor_temp"
+CONF_SENSOR_OUTDOOR_HUMIDITY = "sensor_outdoor_humidity"
 CONF_DELTA_TRIGGER = "delta_trigger"
 CONF_TARGET_OFFSET = "target_offset"
 CONF_MIN_ON_TIME = "min_on_time"
 CONF_MAX_ON_TIME = "max_on_time"
 CONF_MIN_HUMIDITY = "min_humidity"
-
 CONF_SAMPLE_INTERVAL = "sample_interval"
 
 DEFAULT_DELTA_TRIGGER = 3
@@ -53,8 +55,10 @@ DEFAULT_MIN_HUMIDITY = 0
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Required(CONF_NAME): cv.string,
-        vol.Required(CONF_SENSOR): cv.entity_id,
-        vol.Optional(CONF_ATTRIBUTE): cv.string,
+        vol.Required(CONF_SENSOR_INDOOR_TEMP): cv.entity_id,
+        vol.Required(CONF_SENSOR_INDOOR_HUMIDITY): cv.entity_id,
+        vol.Required(CONF_SENSOR_OUTDOOR_TEMP): cv.entity_id,
+        vol.Required(CONF_SENSOR_OUTDOOR_HUMIDITY): cv.entity_id,
         vol.Optional(CONF_DELTA_TRIGGER, default=DEFAULT_DELTA_TRIGGER): vol.Coerce(float),
         vol.Optional(CONF_TARGET_OFFSET, default=DEFAULT_TARGET_OFFSET): vol.Coerce(float),
         vol.Optional(CONF_MIN_ON_TIME, default=DEFAULT_MIN_ON_TIME): cv.time_period,
@@ -67,10 +71,12 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 
 
 async def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
-    """Set up the Generic Hygrostat platform."""
+    """Set up the Generic Dew Point Hygrostat platform."""
     name = config.get(CONF_NAME)
-    sensor_id = config.get(CONF_SENSOR)
-    sensor_attribute = config.get(CONF_ATTRIBUTE)
+    sensor_indoor_temp = config.get(CONF_SENSOR_INDOOR_TEMP)
+    sensor_indoor_humidity = config.get(CONF_SENSOR_INDOOR_HUMIDITY)
+    sensor_outdoor_temp = config.get(CONF_SENSOR_OUTDOOR_TEMP)
+    sensor_outdoor_humidity = config.get(CONF_SENSOR_OUTDOOR_HUMIDITY)
     delta_trigger = config.get(CONF_DELTA_TRIGGER)
     target_offset = config.get(CONF_TARGET_OFFSET)
     min_on_time = config.get(CONF_MIN_ON_TIME)
@@ -81,11 +87,13 @@ async def async_setup_platform(hass, config, async_add_devices, discovery_info=N
 
     async_add_devices(
         [
-            GenericHygrostat(
+            GenericDewPointHygrostat(
                 hass,
                 name,
-                sensor_id,
-                sensor_attribute,
+                sensor_indoor_temp,
+                sensor_indoor_humidity,
+                sensor_outdoor_temp,
+                sensor_outdoor_humidity,
                 delta_trigger,
                 target_offset,
                 min_on_time,
@@ -98,15 +106,17 @@ async def async_setup_platform(hass, config, async_add_devices, discovery_info=N
     )
 
 
-class GenericHygrostat(Entity):
-    """Representation of a Generic Hygrostat device."""
+class GenericDewPointHygrostat(Entity):
+    """Representation of a Generic Dew Point Hygrostat device."""
 
     def __init__(
         self,
         hass,
         name,
-        sensor_id,
-        sensor_attribute,
+        sensor_indoor_temp,
+        sensor_indoor_humidity,
+        sensor_outdoor_temp,
+        sensor_outdoor_humidity,
         delta_trigger,
         target_offset,
         min_on_time,
@@ -118,8 +128,10 @@ class GenericHygrostat(Entity):
         """Initialize the hygrostat."""
         self.hass = hass
         self._name = name
-        self.sensor_id = sensor_id
-        self.sensor_attribute = sensor_attribute
+        self.sensor_indoor_temp = sensor_indoor_temp
+        self.sensor_indoor_humidity = sensor_indoor_humidity
+        self.sensor_outdoor_temp = sensor_outdoor_temp
+        self.sensor_outdoor_humidity = sensor_outdoor_humidity
         self.delta_trigger = delta_trigger
         self.target_offset = target_offset
         self.min_on_time = min_on_time
@@ -127,7 +139,10 @@ class GenericHygrostat(Entity):
         self.min_humidity = min_humidity
         self._unique_id = unique_id
 
-        self.sensor_humidity = None
+        self.indoor_temp = None
+        self.indoor_humidity = None
+        self.outdoor_temp = None
+        self.outdoor_humidity = None
         self.target = None
         sample_size = int(SAMPLE_DURATION / sample_interval)
         self.samples = collections.deque([], sample_size)
@@ -144,7 +159,7 @@ class GenericHygrostat(Entity):
     @callback
     def _async_update(self, now=None):
         try:
-            self.update_humidity()
+            self.update_sensor_data()
         except ValueError as ex:
             _LOGGER.warning(ex)
             return
@@ -153,7 +168,10 @@ class GenericHygrostat(Entity):
             _LOGGER.debug("Minimum time on not yet met for '%s'", self.name)
             return
 
-        if self.target and self.sensor_humidity <= self.target:
+        indoor_dew_point = self.calculate_dew_point(self.indoor_temp, self.indoor_humidity)
+        outdoor_dew_point = self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity)
+        
+        if self.target and indoor_dew_point <= self.target:
             _LOGGER.debug("Dehumidifying target reached for '%s'", self.name)
             self.set_off()
             return
@@ -163,57 +181,61 @@ class GenericHygrostat(Entity):
             self.set_off()
             return
 
-        if self.sensor_humidity < self.min_humidity:
-            _LOGGER.debug("Humidity '%s' is below minimum humidity '%s'", self.sensor_humidity, self.min_humidity)
+        if self.indoor_humidity < self.min_humidity:
+            _LOGGER.debug("Humidity '%s' is below minimum humidity '%s'", self.indoor_humidity, self.min_humidity)
             return
 
-        if self.calc_delta() >= self.delta_trigger:
-            _LOGGER.debug("Humidity rise detected at '%s' with delta '%s'", self.name, self.calc_delta())
+        if self.calc_delta(indoor_dew_point, outdoor_dew_point) >= self.delta_trigger:
+            _LOGGER.debug("Humidity rise detected at '%s' with delta '%s'", self.name, self.calc_delta(indoor_dew_point, outdoor_dew_point))
             self.set_on()
             return
 
-    def update_humidity(self):
-        """Update local humidity state from source sensor."""
-        sensor = self.hass.states.get(self.sensor_id)
+    def update_sensor_data(self):
+        """Update local temperature and humidity states from source sensors."""
+        sensor_indoor_temp = self.hass.states.get(self.sensor_indoor_temp)
+        sensor_indoor_humidity = self.hass.states.get(self.sensor_indoor_humidity)
+        sensor_outdoor_temp = self.hass.states.get(self.sensor_outdoor_temp)
+        sensor_outdoor_humidity = self.hass.states.get(self.sensor_outdoor_humidity)
 
-        if sensor is None:
-            raise ValueError("Unknown humidity sensor '{}'".format(self.sensor_id))
+        if None in (sensor_indoor_temp, sensor_indoor_humidity, sensor_outdoor_temp, sensor_outdoor_humidity):
+            raise ValueError("One or more sensors are unavailable")
 
-        if sensor.state == STATE_UNKNOWN:
-            raise ValueError("Humidity sensor '{}' has state '{}'".format(self.sensor_id, STATE_UNKNOWN))
+        if sensor_indoor_temp.state == STATE_UNKNOWN or sensor_indoor_humidity.state == STATE_UNKNOWN or sensor_outdoor_temp.state == STATE_UNKNOWN or sensor_outdoor_humidity.state == STATE_UNKNOWN:
+            raise ValueError("One or more sensors have an unknown state")
 
         try:
-            if self.sensor_attribute:
-                self.sensor_humidity = float(sensor.attributes[self.sensor_attribute])
-            else:
-                self.sensor_humidity = float(sensor.state)
-            self.add_sample(self.sensor_humidity)
+            self.indoor_temp = float(sensor_indoor_temp.state)
+            self.indoor_humidity = float(sensor_indoor_humidity.state)
+            self.outdoor_temp = float(sensor_outdoor_temp.state)
+            self.outdoor_humidity = float(sensor_outdoor_humidity.state)
+            self.add_sample((self.indoor_temp, self.indoor_humidity, self.outdoor_temp, self.outdoor_humidity))
         except ValueError:
-            raise ValueError("Unable to update humidity from sensor '{}' with value '{}'".format(self.sensor_id, sensor.state))
+            raise ValueError("Unable to update sensor data")
 
     def add_sample(self, value):
-        """Add given humidity sample to sample shift register."""
+        """Add given sensor data sample to sample shift register."""
         self.samples.append(value)
 
-    def calc_delta(self):
-        """Calculate the humidity delta."""
-        return self.sensor_humidity - self.get_lowest_sample()
+    def calc_delta(self, indoor_dew_point, outdoor_dew_point):
+        """Calculate the dew point delta."""
+        return indoor_dew_point - outdoor_dew_point
 
-    def get_lowest_sample(self):
-        """Return the lowest humidity sample."""
-        try:
-            return min(self.samples)
-        except ValueError:
-            return None
+    def calculate_dew_point(self, temperature, humidity):
+        """Calculate the dew point from temperature and humidity."""
+        a = 17.27
+        b = 237.7
+        alpha = ((a * temperature) / (b + temperature)) + math.log(humidity/100.0)
+        dew_point = (b * alpha) / (a - alpha)
+        return dew_point
 
     def set_dehumidification_target(self):
-        """Setting dehumidification target to lowest humidity sample + offset."""
-        lowest_sample = self.get_lowest_sample()
-        if lowest_sample and self.target is None:
-            if self.min_humidity >= lowest_sample + self.target_offset:
+        """Setting dehumidification target to outdoor dew point + offset."""
+        outdoor_dew_point = self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity)
+        if outdoor_dew_point and self.target is None:
+            if self.min_humidity >= outdoor_dew_point + self.target_offset:
                 self.target = self.min_humidity
             else:
-                self.target = lowest_sample + self.target_offset
+                self.target = outdoor_dew_point + self.target_offset
 
     def reset_dehumidification_target(self):
         """Unsetting dehumidification target."""
@@ -282,6 +304,7 @@ class GenericHygrostat(Entity):
             ATTR_MIN_ON_TIMER: self.min_on_timer,
             ATTR_MAX_ON_TIMER: self.max_on_timer,
             ATTR_MIN_HUMIDITY: self.min_humidity,
+            ATTR_DEW_POINT: self.calculate_dew_point(self.indoor_temp, self.indoor_humidity) if self.indoor_temp and self.indoor_humidity else None,
         }
 
     @property
