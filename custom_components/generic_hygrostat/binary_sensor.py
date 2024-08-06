@@ -44,6 +44,8 @@ CONF_MIN_ON_TIME = "min_on_time"
 CONF_MAX_ON_TIME = "max_on_time"
 CONF_MIN_HUMIDITY = "min_humidity"
 CONF_SAMPLE_INTERVAL = "sample_interval"
+CONF_LOW_SPEED = "low_speed"
+CONF_HIGH_SPEED = "high_speed"
 
 DEFAULT_DELTA_TRIGGER = 3
 DEFAULT_TARGET_OFFSET = 3
@@ -59,6 +61,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required(CONF_SENSOR_INDOOR_HUMIDITY): cv.entity_id,
         vol.Required(CONF_SENSOR_OUTDOOR_TEMP): cv.entity_id,
         vol.Required(CONF_SENSOR_OUTDOOR_HUMIDITY): cv.entity_id,
+        vol.Required(CONF_LOW_SPEED): cv.entity_id,  # Vitesse basse
+        vol.Required(CONF_HIGH_SPEED): cv.entity_id,  # Vitesse haute
         vol.Optional(CONF_DELTA_TRIGGER, default=DEFAULT_DELTA_TRIGGER): vol.Coerce(float),
         vol.Optional(CONF_TARGET_OFFSET, default=DEFAULT_TARGET_OFFSET): vol.Coerce(float),
         vol.Optional(CONF_MIN_ON_TIME, default=DEFAULT_MIN_ON_TIME): cv.time_period,
@@ -117,6 +121,8 @@ class GenericDewPointHygrostat(Entity):
         sensor_indoor_humidity,
         sensor_outdoor_temp,
         sensor_outdoor_humidity,
+        low_speed,
+        high_speed,
         delta_trigger,
         target_offset,
         min_on_time,
@@ -132,6 +138,8 @@ class GenericDewPointHygrostat(Entity):
         self.sensor_indoor_humidity = sensor_indoor_humidity
         self.sensor_outdoor_temp = sensor_outdoor_temp
         self.sensor_outdoor_humidity = sensor_outdoor_humidity
+        self.low_speed = low_speed
+        self.high_speed = high_speed
         self.delta_trigger = delta_trigger
         self.target_offset = target_offset
         self.min_on_time = min_on_time
@@ -144,6 +152,8 @@ class GenericDewPointHygrostat(Entity):
         self.outdoor_temp = None
         self.outdoor_humidity = None
         self.target = None
+        self.current_speed = None  # Ajouter un état pour la vitesse actuelle
+
         sample_size = int(SAMPLE_DURATION / sample_interval)
         self.samples = collections.deque([], sample_size)
         self.min_on_timer = None
@@ -155,40 +165,79 @@ class GenericDewPointHygrostat(Entity):
         self._async_update()
 
         async_track_time_interval(hass, self._async_update, sample_interval)
+        
+    def set_low_speed(self):
+        """Activate low speed ventilation."""
+        self.hass.services.call("homeassistant", "turn_on", {"entity_id": self.low_speed})
+        self.hass.services.call("homeassistant", "turn_off", {"entity_id": self.high_speed})
+        self.current_speed = "low"
+        self.set_state(STATE_ON)
+        self.set_dehumidification_target()
+        self.set_min_on_timer()
+        self.set_max_on_timer()
+
+    def set_high_speed(self):
+        """Activate high speed ventilation."""
+        self.hass.services.call("homeassistant", "turn_on", {"entity_id": self.high_speed})
+        self.hass.services.call("homeassistant", "turn_off", {"entity_id": self.low_speed})
+        self.current_speed = "high"
+        self.set_state(STATE_ON)
+        self.set_dehumidification_target()
+        self.set_min_on_timer()
+        self.set_max_on_timer()
+
+    def set_off(self):
+        """Turn off ventilation."""
+        self.hass.services.call("homeassistant", "turn_off", {"entity_id": self.low_speed})
+        self.hass.services.call("homeassistant", "turn_off", {"entity_id": self.high_speed})
+        self.current_speed = None
+        self.set_state(STATE_OFF)
+        self.reset_dehumidification_target()
+        self.reset_min_on_timer()
+        self.reset_max_on_timer()
 
     @callback
-    def _async_update(self, now=None):
-        try:
-            self.update_sensor_data()
-        except ValueError as ex:
-            _LOGGER.warning(ex)
-            return
+def _async_update(self, now=None):
+    try:
+        self.update_sensor_data()
+    except ValueError as ex:
+        _LOGGER.warning(ex)
+        return
 
-        if self.min_on_timer and self.min_on_timer > datetime.now():
-            _LOGGER.debug("Minimum time on not yet met for '%s'", self.name)
-            return
+    if self.min_on_timer and self.min_on_timer > datetime.now():
+        _LOGGER.debug("Minimum time on not yet met for '%s'", self.name)
+        return
 
-        indoor_dew_point = self.calculate_dew_point(self.indoor_temp, self.indoor_humidity)
-        outdoor_dew_point = self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity)
-        
-        if self.target and indoor_dew_point <= self.target:
-            _LOGGER.debug("Dehumidifying target reached for '%s'", self.name)
-            self.set_off()
-            return
+    indoor_dew_point = self.calculate_dew_point(self.indoor_temp, self.indoor_humidity)
+    outdoor_dew_point = self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity)
+    
+    if self.target and indoor_dew_point <= self.target:
+        _LOGGER.debug("Dehumidifying target reached for '%s'", self.name)
+        self.set_off()
+        return
 
-        if self.max_on_timer and self.max_on_timer < datetime.now():
-            _LOGGER.debug("Max on timer reached for '%s'", self.name)
-            self.set_off()
-            return
+    if self.max_on_timer and self.max_on_timer < datetime.now():
+        _LOGGER.debug("Max on timer reached for '%s'", self.name)
+        self.set_off()
+        return
 
-        if self.indoor_humidity < self.min_humidity:
-            _LOGGER.debug("Humidity '%s' is below minimum humidity '%s'", self.indoor_humidity, self.min_humidity)
-            return
+    if self.indoor_humidity < self.min_humidity:
+        _LOGGER.debug("Humidity '%s' is below minimum humidity '%s'", self.indoor_humidity, self.min_humidity)
+        return
 
-        if self.calc_delta(indoor_dew_point, outdoor_dew_point) >= self.delta_trigger:
-            _LOGGER.debug("Humidity rise detected at '%s' with delta '%s'", self.name, self.calc_delta(indoor_dew_point, outdoor_dew_point))
-            self.set_on()
-            return
+    dew_point_delta = self.calc_delta(indoor_dew_point, outdoor_dew_point)
+
+    if dew_point_delta >= self.delta_trigger:
+        _LOGGER.debug("High humidity detected at '%s' with delta '%s'", self.name, dew_point_delta)
+        if self.current_speed != "high":
+            self.set_high_speed()
+    elif dew_point_delta >= self.delta_trigger / 2:
+        _LOGGER.debug("Moderate humidity detected at '%s' with delta '%s'", self.name, dew_point_delta)
+        if self.current_speed != "low":
+            self.set_low_speed()
+    else:
+        _LOGGER.debug("Low humidity detected at '%s' with delta '%s'", self.name, dew_point_delta)
+        self.set_off()
 
     def update_sensor_data(self):
         """Update local temperature and humidity states from source sensors."""
