@@ -2,7 +2,7 @@
 
 import voluptuous as vol
 
-from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
+from homeassistant.components.wmc import DOMAIN as WMC_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME, CONF_UNIQUE_ID, Platform
 from homeassistant.core import HomeAssistant
@@ -63,7 +63,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     for wmc_conf in config[DOMAIN]:
         hass.async_create_task(
             discovery.async_load_platform(
-                hass, Platform.CLIMATE, DOMAIN, wmc_conf, config
+                hass, Platform.WMC, DOMAIN, wmc_conf, config
             )
         )
 
@@ -79,7 +79,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.options[CONF_SENSOR_INDOOR_TEMP],
     )
 
-    await hass.config_entries.async_forward_entry_setups(entry, (Platform.CLIMATE,))
+    await hass.config_entries.async_forward_entry_setups(entry, (Platform.WMC,))
     entry.async_on_unload(entry.add_update_listener(config_entry_update_listener))
     return True
 
@@ -92,6 +92,6 @@ async def config_entry_update_listener(hass: HomeAssistant, entry: ConfigEntry) 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(
-        entry, (Platform.CLIMATE,)
+        entry, (Platform.WMC,)
     )
 

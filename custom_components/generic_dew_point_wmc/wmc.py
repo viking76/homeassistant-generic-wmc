@@ -13,7 +13,7 @@ import logging
 import voluptuous as vol
 
 from homeassistant.core import callback
-from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity
+from homeassistant.components.wmc import PLATFORM_SCHEMA, WmcEntity
 from homeassistant.const import STATE_ON, STATE_OFF, STATE_UNKNOWN, CONF_NAME, CONF_UNIQUE_ID
 from homeassistant.helpers.event import async_track_time_interval
 import homeassistant.helpers.config_validation as cv
@@ -104,7 +104,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         ]
     )
 
-class GenericDewPointWMC(ClimateEntity):
+class GenericDewPointWMC(WmcEntity):
     """Representation of a Generic Dew Point WMC device."""
 
     def __init__(
@@ -256,7 +256,7 @@ class GenericDewPointWMC(ClimateEntity):
 
     @property
     def name(self):
-        """Return the name of the climate device."""
+        """Return the name of the wmc device."""
         return self._name
 
     @property
