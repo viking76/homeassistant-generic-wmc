@@ -1,8 +1,8 @@
 """
-Adds support for generic dew point hygrostat units.
+Adds support for generic dew point WMC units.
 
 For more details about this platform, please refer to the documentation at
-https://home-assistant.io/components/binary_sensor.generic_hygrostat/
+https://home-assistant.io/components/binary_sensor.generic_wmc/
 """
 import asyncio
 import collections
@@ -227,15 +227,28 @@ class GenericDewPointHygrostat(Entity):
         alpha = ((a * temperature) / (b + temperature)) + math.log(humidity/100.0)
         dew_point = (b * alpha) / (a - alpha)
         return dew_point
+        
+    def dew_point_to_humidity(self, temperature, dew_point):
+        """Convert dew point to relative humidity for a given temperature."""
+        a, b = 17.27, 237.7
+        alpha = lambda temp: (a * temp) / (b + temp)
+    
+        alpha_t = alpha(temperature)
+        alpha_dp = alpha(dew_point)
+    
+        humidity = (math.exp(alpha_dp - alpha_t) * 100.0)
+        return humidity
 
     def set_dehumidification_target(self):
-        """Setting dehumidification target to outdoor dew point + offset."""
+        """Setting dehumidification target to indoor humidity corresponding to outdoor dew point + offset."""
         outdoor_dew_point = self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity)
         if outdoor_dew_point and self.target is None:
-            if self.min_humidity >= outdoor_dew_point + self.target_offset:
+            indoor_humidity_target = self.dew_point_to_humidity(self.indoor_temp, outdoor_dew_point + self.target_offset)
+        
+            if indoor_humidity_target < self.min_humidity:
                 self.target = self.min_humidity
             else:
-                self.target = outdoor_dew_point + self.target_offset
+                self.target = indoor_humidity_target
 
     def reset_dehumidification_target(self):
         """Unsetting dehumidification target."""
