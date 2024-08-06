@@ -241,10 +241,13 @@ class GenericDewPointHygrostat(Entity):
 
     def set_dehumidification_target(self):
         """Setting dehumidification target to indoor humidity corresponding to outdoor dew point + offset."""
+        # Calculer le point de rosée extérieur à partir de la température et de l'humidité extérieures
         outdoor_dew_point = self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity)
+        # Vérifier que le point de rosée extérieur est calculé et que la cible n'est pas déjà définie
         if outdoor_dew_point and self.target is None:
+            # Convertir le point de rosée extérieur + décalage en humidité relative intérieure cible
             indoor_humidity_target = self.dew_point_to_humidity(self.indoor_temp, outdoor_dew_point + self.target_offset)
-        
+        # Comparer l'humidité relative cible avec l'humidité minimale et définir la cible en conséquence
             if indoor_humidity_target < self.min_humidity:
                 self.target = self.min_humidity
             else:
