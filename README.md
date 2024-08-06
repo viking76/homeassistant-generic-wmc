@@ -34,15 +34,15 @@ climate:
     sensor_indoor_humidity: sensor.indoor_humidity
     sensor_outdoor_temp: sensor.outdoor_temperature
     sensor_outdoor_humidity: sensor.outdoor_humidity
-    low_speed: switch.low_speed_ventilation
-    high_speed: switch.high_speed_ventilation
-    delta_trigger: 3
-    target_offset: 3
-    min_on_time: 00:05:00
-    max_on_time: 02:00:00
-    sample_interval: 00:05:00
-    min_humidity: 30
-    unique_id: "living_room_hygrostat"
+    low_speed: switch.low_speed
+    high_speed: switch.high_speed
+    delta_trigger: 3.0
+    target_offset: 3.0
+    min_on_time: "00:10:00"
+    max_on_time: "02:00:00"
+    sample_interval: "00:05:00"
+    min_humidity: 30.0
+
 ```
 
 ### Configuration Parameters
