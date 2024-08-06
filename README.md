@@ -1,4 +1,4 @@
-# Generic Dew Point Hygrostat
+# Generic WMC use (Dew Point)
 
 This component adds support for a generic dew point-based hygrostat with two-speed ventilation control in Home Assistant. It helps in maintaining a comfortable indoor humidity level by controlling ventilation based on indoor and outdoor humidity and temperature.
 
