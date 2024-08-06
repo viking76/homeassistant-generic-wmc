@@ -1,6 +1,6 @@
 {
-  "domain": "generic_hygrostat",
-  "name": "Generic Hygrostat",
+  "domain": "generic_wmc",
+  "name": "Generic WMC",
   "documentation": "https://github.com/viking76/homeassistant-generic-wmc",
   "dependencies": [],
   "codeowners": ["@viking76"],
