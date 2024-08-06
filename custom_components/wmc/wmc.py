@@ -60,6 +60,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required(CONF_SENSOR_INDOOR_HUMIDITY): cv.entity_id,
         vol.Required(CONF_SENSOR_OUTDOOR_TEMP): cv.entity_id,
         vol.Required(CONF_SENSOR_OUTDOOR_HUMIDITY): cv.entity_id,
+        vol.Required(CONF_LOW_SPEED): cv.entity_id,
+        vol.Required(CONF_HIGH_SPEED): cv.entity_id,
         vol.Optional(CONF_DELTA_TRIGGER, default=DEFAULT_DELTA_TRIGGER): vol.Coerce(float),
         vol.Optional(CONF_TARGET_OFFSET, default=DEFAULT_TARGET_OFFSET): vol.Coerce(float),
         vol.Optional(CONF_MIN_ON_TIME, default=DEFAULT_MIN_ON_TIME): cv.time_period,
@@ -231,6 +233,26 @@ class GenericDewPointWMC(Entity):
     def calc_delta(self, indoor_dew_point, outdoor_dew_point):
         """Calculate the delta between indoor and outdoor dew points."""
         return abs(indoor_dew_point - outdoor_dew_point)
+    
+    def set_low_speed(self):
+        """Set the ventilation to low speed."""
+        if self._state != self.low_speed:
+            self._state = self.low_speed
+            self.hass.states.async_set(self.low_speed, STATE_ON)
+            self.hass.states.async_set(self.high_speed, STATE_OFF)
+            self.min_on_timer = datetime.now() + self.min_on_time
+            self.max_on_timer = datetime.now() + self.max_on_time
+            _LOGGER.debug("Setting '%s' to low speed", self.name)
+
+    def set_high_speed(self):
+        """Set the ventilation to high speed."""
+        if self._state != self.high_speed:
+            self._state = self.high_speed
+            self.hass.states.async_set(self.low_speed, STATE_OFF)
+            self.hass.states.async_set(self.high_speed, STATE_ON)
+            self.min_on_timer = datetime.now() + self.min_on_time
+            self.max_on_timer = datetime.now() + self.max_on_time
+            _LOGGER.debug("Setting '%s' to high speed", self.name)
 
     def set_on(self):
         """Turn on the device."""
