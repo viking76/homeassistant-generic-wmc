@@ -24,7 +24,7 @@ DEPENDENCIES = ["sensor"]
 
 SAMPLE_DURATION = timedelta(minutes=15)
 
-DEFAULT_NAME = "Generic Dew Point Hygrostat"
+DEFAULT_NAME = "Generic Dew Point WMC"
 
 ATTR_NUMBER_OF_SAMPLES = "number_of_samples"
 ATTR_LOWEST_SAMPLE = "lowest_sample"
