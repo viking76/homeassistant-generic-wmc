@@ -23,12 +23,12 @@ Ensure you have the following sensors set up in Home Assistant:
 
 ### Installation
 
-1. Copy the `generic_dew_point_hygrostat.py` file to your `custom_components` directory in Home Assistant.
+1. Copy the `generic_wmc.py` file to your `custom_components` directory in Home Assistant.
 2. Add the following configuration to your `configuration.yaml` file:
 
 ```yaml
-climate:
-  - platform: generic_dew_point_hygrostat
+generic_wmc:
+  - platform: generic_wmc
     name: "Living Room Hygrostat"
     sensor_indoor_temp: sensor.indoor_temperature
     sensor_indoor_humidity: sensor.indoor_humidity
