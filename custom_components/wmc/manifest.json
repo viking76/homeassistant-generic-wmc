@@ -1,6 +1,6 @@
 {
-  "domain": "generic_dew_point_wmc",
-  "name": "Generic Dew Point WMC",
+  "domain": "wmc",
+  "name": "WMC Dew Point",
   "version": "1.0.0",
   "documentation": "https://home-assistant.io/components/climate.generic_dew_point_wmc/",
   "dependencies": [],

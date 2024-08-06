@@ -12,7 +12,7 @@ from homeassistant.helpers.device import (
 )
 from homeassistant.helpers.typing import ConfigType
 
-DOMAIN = "generic_dew_point_wmc"
+DOMAIN = "wmc"
 
 CONF_SENSOR_INDOOR_TEMP = "sensor_indoor_temp"
 CONF_SENSOR_INDOOR_HUMIDITY = "sensor_indoor_humidity"
