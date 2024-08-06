@@ -69,7 +69,7 @@ Below is an example configuration for a living room hygrostat:
 ```yaml
 
 climate:
-  - platform: generic_dew_point_hygrostat
+  - platform: generic_dew_point_wmc
     name: "Living Room Hygrostat"
     sensor_indoor_temp: sensor.living_room_temperature
     sensor_indoor_humidity: sensor.living_room_humidity
