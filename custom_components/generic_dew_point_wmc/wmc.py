@@ -6,16 +6,17 @@ https://home-assistant.io/components/climate.generic_dew_point_wmc/
 """
 import asyncio
 import collections
-import math
 from datetime import timedelta, datetime
 import logging
+import math
 
 import voluptuous as vol
 
 from homeassistant.core import callback
-from homeassistant.components.wmc import PLATFORM_SCHEMA, WmcEntity
+from homeassistant.components.wmc import PLATFORM_SCHEMA
 from homeassistant.const import STATE_ON, STATE_OFF, STATE_UNKNOWN, CONF_NAME, CONF_UNIQUE_ID
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.entity import Entity
 import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,12 +27,18 @@ SAMPLE_DURATION = timedelta(minutes=15)
 
 DEFAULT_NAME = "Generic Dew Point WMC"
 
+ATTR_NUMBER_OF_SAMPLES = "number_of_samples"
+ATTR_LOWEST_SAMPLE = "lowest_sample"
+ATTR_TARGET = "target"
+ATTR_MIN_ON_TIMER = "min_on_timer"
+ATTR_MAX_ON_TIMER = "max_on_timer"
+ATTR_MIN_HUMIDITY = "min_humidity"
+ATTR_DEW_POINT = "dew_point"
+
 CONF_SENSOR_INDOOR_TEMP = "sensor_indoor_temp"
 CONF_SENSOR_INDOOR_HUMIDITY = "sensor_indoor_humidity"
 CONF_SENSOR_OUTDOOR_TEMP = "sensor_outdoor_temp"
 CONF_SENSOR_OUTDOOR_HUMIDITY = "sensor_outdoor_humidity"
-CONF_LOW_SPEED = "low_speed"
-CONF_HIGH_SPEED = "high_speed"
 CONF_DELTA_TRIGGER = "delta_trigger"
 CONF_TARGET_OFFSET = "target_offset"
 CONF_MIN_ON_TIME = "min_on_time"
@@ -53,8 +60,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required(CONF_SENSOR_INDOOR_HUMIDITY): cv.entity_id,
         vol.Required(CONF_SENSOR_OUTDOOR_TEMP): cv.entity_id,
         vol.Required(CONF_SENSOR_OUTDOOR_HUMIDITY): cv.entity_id,
-        vol.Required(CONF_LOW_SPEED): cv.entity_id,
-        vol.Required(CONF_HIGH_SPEED): cv.entity_id,
         vol.Optional(CONF_DELTA_TRIGGER, default=DEFAULT_DELTA_TRIGGER): vol.Coerce(float),
         vol.Optional(CONF_TARGET_OFFSET, default=DEFAULT_TARGET_OFFSET): vol.Coerce(float),
         vol.Optional(CONF_MIN_ON_TIME, default=DEFAULT_MIN_ON_TIME): cv.time_period,
@@ -65,15 +70,13 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     }
 )
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+async def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
     """Set up the Generic Dew Point WMC platform."""
     name = config.get(CONF_NAME)
     sensor_indoor_temp = config.get(CONF_SENSOR_INDOOR_TEMP)
     sensor_indoor_humidity = config.get(CONF_SENSOR_INDOOR_HUMIDITY)
     sensor_outdoor_temp = config.get(CONF_SENSOR_OUTDOOR_TEMP)
     sensor_outdoor_humidity = config.get(CONF_SENSOR_OUTDOOR_HUMIDITY)
-    low_speed = config.get(CONF_LOW_SPEED)
-    high_speed = config.get(CONF_HIGH_SPEED)
     delta_trigger = config.get(CONF_DELTA_TRIGGER)
     target_offset = config.get(CONF_TARGET_OFFSET)
     min_on_time = config.get(CONF_MIN_ON_TIME)
@@ -82,7 +85,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     min_humidity = config.get(CONF_MIN_HUMIDITY)
     unique_id = config.get(CONF_UNIQUE_ID)
 
-    async_add_entities(
+    async_add_devices(
         [
             GenericDewPointWMC(
                 hass,
@@ -91,8 +94,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
                 sensor_indoor_humidity,
                 sensor_outdoor_temp,
                 sensor_outdoor_humidity,
-                low_speed,
-                high_speed,
                 delta_trigger,
                 target_offset,
                 min_on_time,
@@ -104,7 +105,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         ]
     )
 
-class GenericDewPointWMC(WmcEntity):
+
+class GenericDewPointWMC(Entity):
     """Representation of a Generic Dew Point WMC device."""
 
     def __init__(
@@ -115,8 +117,6 @@ class GenericDewPointWMC(WmcEntity):
         sensor_indoor_humidity,
         sensor_outdoor_temp,
         sensor_outdoor_humidity,
-        low_speed,
-        high_speed,
         delta_trigger,
         target_offset,
         min_on_time,
@@ -125,15 +125,13 @@ class GenericDewPointWMC(WmcEntity):
         min_humidity,
         unique_id,
     ):
-        """Initialize the WMC."""
+        """Initialize the WMC device."""
         self.hass = hass
         self._name = name
         self.sensor_indoor_temp = sensor_indoor_temp
         self.sensor_indoor_humidity = sensor_indoor_humidity
         self.sensor_outdoor_temp = sensor_outdoor_temp
         self.sensor_outdoor_humidity = sensor_outdoor_humidity
-        self.low_speed = low_speed
-        self.high_speed = high_speed
         self.delta_trigger = delta_trigger
         self.target_offset = target_offset
         self.min_on_time = min_on_time
@@ -150,9 +148,6 @@ class GenericDewPointWMC(WmcEntity):
         self.samples = collections.deque([], sample_size)
         self.min_on_timer = None
         self.max_on_timer = None
-
-        self.indoor_dew_point = None
-        self.outdoor_dew_point = None
 
         self._state = STATE_OFF
         self._icon = "mdi:water-percent"
@@ -173,10 +168,10 @@ class GenericDewPointWMC(WmcEntity):
             _LOGGER.debug("Minimum time on not yet met for '%s'", self.name)
             return
 
-        self.indoor_dew_point = self.calculate_dew_point(self.indoor_temp, self.indoor_humidity)
-        self.outdoor_dew_point = self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity)
+        indoor_dew_point = self.calculate_dew_point(self.indoor_temp, self.indoor_humidity)
+        outdoor_dew_point = self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity)
 
-        if self.target and self.indoor_dew_point <= self.target:
+        if self.target and indoor_dew_point <= self.target:
             _LOGGER.debug("Dehumidifying target reached for '%s'", self.name)
             self.set_off()
             return
@@ -190,8 +185,8 @@ class GenericDewPointWMC(WmcEntity):
             _LOGGER.debug("Humidity '%s' is below minimum humidity '%s'", self.indoor_humidity, self.min_humidity)
             return
 
-        if self.calc_delta(self.indoor_dew_point, self.outdoor_dew_point) >= self.delta_trigger:
-            _LOGGER.debug("Humidity rise detected at '%s' with delta '%s'", self.name, self.calc_delta(self.indoor_dew_point, self.outdoor_dew_point))
+        if self.calc_delta(indoor_dew_point, outdoor_dew_point) >= self.delta_trigger:
+            _LOGGER.debug("Humidity rise detected at '%s' with delta '%s'", self.name, self.calc_delta(indoor_dew_point, outdoor_dew_point))
             self.set_on()
             return
 
@@ -215,69 +210,59 @@ class GenericDewPointWMC(WmcEntity):
             self.outdoor_humidity = float(sensor_outdoor_humidity.state)
             self.add_sample((self.indoor_temp, self.indoor_humidity, self.outdoor_temp, self.outdoor_humidity))
         except ValueError:
-            raise ValueError("Unable to update sensor data")
+            raise ValueError("Failed to parse sensor data")
 
-    def add_sample(self, value):
-        """Add given sensor data sample to sample shift register."""
-        self.samples.append(value)
+    def add_sample(self, sample):
+        """Add a sample to the queue and update the state."""
+        self.samples.append(sample)
+        if len(self.samples) == self.samples.maxlen:
+            self.target = self.calculate_target()
 
-    def calculate_dew_point(self, temperature, humidity):
-        """Calculate the dew point temperature."""
-        a = 17.27
-        b = 237.7
-        alpha = ((a * temperature) / (b + temperature)) + math.log(humidity / 100.0)
-        return (b * alpha) / (a - alpha)
+    def calculate_target(self):
+        """Calculate the target dew point."""
+        if len(self.samples) == 0:
+            return None
+        return sum([s[1] for s in self.samples]) / len(self.samples)
 
-    def calc_delta(self, dew_point1, dew_point2):
-        """Calculate the delta between two dew point temperatures."""
-        return abs(dew_point1 - dew_point2)
+    def calculate_dew_point(self, temp, humidity):
+        """Calculate the dew point."""
+        return temp - ((100 - humidity) / 5)
+
+    def calc_delta(self, indoor_dew_point, outdoor_dew_point):
+        """Calculate the delta between indoor and outdoor dew points."""
+        return abs(indoor_dew_point - outdoor_dew_point)
 
     def set_on(self):
-        """Turn the ventilation on."""
-        if self._state == STATE_ON:
-            return
+        """Turn on the device."""
         self._state = STATE_ON
-        self.min_on_timer = datetime.now() + self.min_on_time
-        self.max_on_timer = datetime.now() + self.max_on_time
-        _LOGGER.debug("Turning on ventilation for '%s'", self.name)
-        self.hass.states.set(self.low_speed, STATE_ON)
-        self.hass.states.set(self.high_speed, STATE_ON)
 
     def set_off(self):
-        """Turn the ventilation off."""
-        if self._state == STATE_OFF:
-            return
+        """Turn off the device."""
         self._state = STATE_OFF
-        self.min_on_timer = None
-        self.max_on_timer = None
-        _LOGGER.debug("Turning off ventilation for '%s'", self.name)
-        self.hass.states.set(self.low_speed, STATE_OFF)
-        self.hass.states.set(self.high_speed, STATE_OFF)
 
     @property
     def name(self):
-        """Return the name of the wmc device."""
+        """Return the name of the entity."""
         return self._name
 
     @property
     def state(self):
-        """Return the current state of the ventilation."""
+        """Return the state of the device."""
         return self._state
 
     @property
     def icon(self):
-        """Return the icon to use in the frontend."""
+        """Return the icon of the device."""
         return self._icon
 
     @property
-    def device_state_attributes(self):
+    def extra_state_attributes(self):
         """Return the state attributes."""
         return {
-            "indoor_dew_point": self.indoor_dew_point,
-            "outdoor_dew_point": self.outdoor_dew_point,
+            ATTR_TARGET: self.target,
+            ATTR_MIN_HUMIDITY: self.min_humidity,
+            ATTR_DEW_POINT: {
+                "indoor": self.calculate_dew_point(self.indoor_temp, self.indoor_humidity),
+                "outdoor": self.calculate_dew_point(self.outdoor_temp, self.outdoor_humidity),
+            },
         }
-
-    @property
-    def unique_id(self):
-        """Return a unique ID."""
-        return self._unique_id
