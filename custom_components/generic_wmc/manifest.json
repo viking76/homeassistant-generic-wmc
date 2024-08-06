@@ -1,9 +1,0 @@
-{
-  "domain": "generic_wmc",
-  "name": "Generic WMC",
-  "documentation": "https://github.com/viking76/homeassistant-generic-wmc",
-  "dependencies": [],
-  "codeowners": ["@viking76"],
-  "requirements": [],
-  "version": "0.2.0"
-}

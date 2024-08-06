@@ -27,9 +27,9 @@ Ensure you have the following sensors set up in Home Assistant:
 2. Add the following configuration to your `configuration.yaml` file:
 
 ```yaml
-generic_wmc:
-  - platform: generic_wmc
-    name: "Living Room Hygrostat"
+climate:
+  - platform: generic_dew_point_wmc
+    name: "My WMC"
     sensor_indoor_temp: sensor.indoor_temperature
     sensor_indoor_humidity: sensor.indoor_humidity
     sensor_outdoor_temp: sensor.outdoor_temperature
