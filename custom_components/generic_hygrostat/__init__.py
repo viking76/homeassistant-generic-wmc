@@ -1,1 +1,1 @@
-"""Generic hygrostat"""
+"""Generic WMC"""
