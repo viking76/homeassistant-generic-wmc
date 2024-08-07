@@ -1,5 +1,6 @@
-from homeassistant.helpers.typing import ConfigType, HomeAssistantType
 import voluptuous as vol
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import CONF_PLATFORM
 import homeassistant.helpers.config_validation as cv
 
@@ -8,7 +9,7 @@ from .const import DOMAIN
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema({
-            vol.Required(CONF_PLATFORM): cv.string,
+            vol.Required("platform"): cv.string,
             vol.Required("sensor_indoor_temp"): cv.entity_id,
             vol.Required("sensor_indoor_humidity"): cv.entity_id,
             vol.Required("sensor_outdoor_temp"): cv.entity_id,
@@ -27,7 +28,7 @@ CONFIG_SCHEMA = vol.Schema(
     extra=vol.ALLOW_EXTRA,
 )
 
-async def async_setup(hass: HomeAssistantType, config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the WMC component."""
     if DOMAIN not in config:
         return True
