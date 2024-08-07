@@ -1,33 +1,58 @@
-"""The wmc component."""
-
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry
+
+from homeassistant.const import CONF_NAME, CONF_UNIQUE_ID, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, discovery
 from homeassistant.helpers.device import async_remove_stale_devices_links_keep_entity_device
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.typing import ConfigType, ConfigEntry
 
 DOMAIN = "wmc"
 
-# Define the schema for the configuration
-WMC_SCHEMA = vol.Schema({
-    vol.Required("name"): cv.string,
-    vol.Required("sensor_indoor_temp"): cv.entity_id,
-    vol.Required("sensor_indoor_humidity"): cv.entity_id,
-    vol.Required("sensor_outdoor_temp"): cv.entity_id,
-    vol.Required("sensor_outdoor_humidity"): cv.entity_id,
-    vol.Optional("delta_trigger", default=3): vol.Coerce(float),
-    vol.Optional("target_offset", default=3): vol.Coerce(float),
-    vol.Optional("min_on_time", default="00:00:00"): cv.time_period,
-    vol.Optional("max_on_time", default="02:00:00"): cv.time_period,
-    vol.Optional("sample_interval", default="00:05:00"): cv.time_period,
-    vol.Optional("min_humidity", default=0): vol.Coerce(float),
-    vol.Optional("unique_id"): cv.string,
-})
+CONF_HUMIDIFIER = "humidifier"
+CONF_SENSOR = "target_sensor"
+CONF_MIN_HUMIDITY = "min_humidity"
+CONF_MAX_HUMIDITY = "max_humidity"
+CONF_TARGET_HUMIDITY = "target_humidity"
+CONF_MIN_DUR = "min_cycle_duration"
+CONF_DRY_TOLERANCE = "dry_tolerance"
+CONF_WET_TOLERANCE = "wet_tolerance"
+CONF_KEEP_ALIVE = "keep_alive"
+CONF_INITIAL_STATE = "initial_state"
+CONF_AWAY_HUMIDITY = "away_humidity"
+CONF_AWAY_FIXED = "away_fixed"
+CONF_STALE_DURATION = "sensor_stale_duration"
+CONF_LOW_SPEED = "low_speed"
+CONF_HIGH_SPEED = "high_speed"
 
-CONFIG_SCHEMA = vol.Schema({
-    DOMAIN: vol.All(cv.ensure_list, [WMC_SCHEMA]),
-}, extra=vol.ALLOW_EXTRA)
+DEFAULT_TOLERANCE = 3
+DEFAULT_NAME = "Generic WMC"
+
+WMC_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_HUMIDIFIER): cv.entity_id,
+        vol.Required(CONF_SENSOR): cv.entity_id,
+        vol.Optional(CONF_MAX_HUMIDITY): vol.Coerce(float),
+        vol.Optional(CONF_MIN_DUR): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(CONF_MIN_HUMIDITY): vol.Coerce(float),
+        vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+        vol.Optional(CONF_DRY_TOLERANCE, default=DEFAULT_TOLERANCE): vol.Coerce(float),
+        vol.Optional(CONF_WET_TOLERANCE, default=DEFAULT_TOLERANCE): vol.Coerce(float),
+        vol.Optional(CONF_TARGET_HUMIDITY): vol.Coerce(float),
+        vol.Optional(CONF_KEEP_ALIVE): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(CONF_INITIAL_STATE): cv.boolean,
+        vol.Optional(CONF_AWAY_HUMIDITY): vol.Coerce(int),
+        vol.Optional(CONF_AWAY_FIXED): cv.boolean,
+        vol.Optional(CONF_STALE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(CONF_LOW_SPEED): cv.entity_id,
+        vol.Optional(CONF_HIGH_SPEED): cv.entity_id,
+        vol.Optional(CONF_UNIQUE_ID): cv.string,
+    }
+)
+
+CONFIG_SCHEMA = vol.Schema(
+    {DOMAIN: vol.All(cv.ensure_list, [WMC_SCHEMA])},
+    extra=vol.ALLOW_EXTRA,
+)
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the WMC component."""
@@ -37,7 +62,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     for wmc_conf in config[DOMAIN]:
         hass.async_create_task(
             discovery.async_load_platform(
-                hass, "climate", DOMAIN, wmc_conf, config
+                hass, Platform.CLIMATE, DOMAIN, wmc_conf, config
             )
         )
 
@@ -45,13 +70,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up from a config entry."""
+
     async_remove_stale_devices_links_keep_entity_device(
         hass,
         entry.entry_id,
-        entry.options["sensor_indoor_temp"],
+        entry.options[CONF_HUMIDIFIER],
     )
 
-    await hass.config_entries.async_forward_entry_setups(entry, ("climate",))
+    await hass.config_entries.async_forward_entry_setups(entry, (Platform.CLIMATE,))
     entry.async_on_unload(entry.add_update_listener(config_entry_update_listener))
     return True
 
@@ -62,5 +88,5 @@ async def config_entry_update_listener(hass: HomeAssistant, entry: ConfigEntry) 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(
-        entry, ("climate",)
+        entry, (Platform.CLIMATE,)
     )
